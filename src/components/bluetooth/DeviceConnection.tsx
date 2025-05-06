@@ -4,7 +4,7 @@ import { useBluetooth } from "@/context/BluetoothContext";
 import { useData } from "@/context/DataContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Bluetooth, BluetoothConnected, BluetoothOff, RefreshCw, Sync } from "lucide-react";
+import { Bluetooth, BluetoothConnected, BluetoothOff, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const DeviceConnection = () => {
@@ -147,7 +147,7 @@ const DeviceConnection = () => {
               {isSyncing ? (
                 <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
               ) : (
-                <Sync className="mr-2 h-4 w-4" />
+                <RefreshCw className="mr-2 h-4 w-4" />
               )}
               {isSyncing ? "Syncing..." : "Sync Data"}
             </Button>

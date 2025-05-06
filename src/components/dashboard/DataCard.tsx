@@ -99,8 +99,7 @@ const DataCard: React.FC<DataCardProps> = ({
           <div className="mt-2">
             <Progress 
               value={progress * 100} 
-              className="h-2"
-              indicatorClassName={getProgressColor()}
+              className={cn("h-2", getProgressColor())}
             />
           </div>
         )}
