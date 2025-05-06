@@ -66,7 +66,7 @@ const DeviceConnection = () => {
         <CardDescription>
           {isConnected 
             ? `Connected to ${device?.name || "Device"}`
-            : "Connect to your Daring smart ring"
+            : "Connect to your smart ring"
           }
         </CardDescription>
       </CardHeader>
@@ -105,7 +105,7 @@ const DeviceConnection = () => {
               <ul className="space-y-2">
                 {availableDevices.map(device => (
                   <li key={device.id} className="flex justify-between items-center">
-                    <span className="text-sm">{device.name || "Unknown Device"}</span>
+                    <span className="text-sm">{device.name || `Unknown Device (${device.id.substring(0, 8)}...)`}</span>
                     <Button 
                       size="sm" 
                       variant="outline"
@@ -129,7 +129,7 @@ const DeviceConnection = () => {
             disabled={isConnecting}
           >
             <Bluetooth className="mr-2 h-4 w-4" />
-            {isConnecting ? "Scanning..." : "Scan for Devices"}
+            {isConnecting ? "Scanning..." : "Scan for All Devices"}
           </Button>
         ) : (
           <div className="grid grid-cols-2 gap-2 w-full">

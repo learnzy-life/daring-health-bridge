@@ -42,14 +42,15 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       setIsConnecting(true);
       const devices = await navigator.bluetooth.requestDevice({
-        filters: [
-          { namePrefix: "Daring" },
-          { services: ["heart_rate"] }
-        ],
+        // Remove specific filters to show all available devices
+        acceptAllDevices: true,
+        // List all services you might want to use later
         optionalServices: [
           "battery_service",
           "device_information",
-          "health_thermometer"
+          "health_thermometer",
+          "heart_rate",
+          "generic_access"
         ]
       });
       
@@ -64,7 +65,10 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       return [devices];
     } catch (error) {
       console.error("Error scanning for devices:", error);
-      toast.error("Failed to scan for devices");
+      // Don't show error if user just canceled the dialog
+      if (error instanceof Error && error.name !== "NotFoundError") {
+        toast.error("Failed to scan for devices");
+      }
       return [];
     } finally {
       setIsConnecting(false);
