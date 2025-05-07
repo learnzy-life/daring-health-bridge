@@ -4,8 +4,10 @@ import { useBluetooth } from "@/context/BluetoothContext";
 import { useData } from "@/context/DataContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Bluetooth, BluetoothConnected, BluetoothOff, RefreshCw, ActivitySquare } from "lucide-react";
+import { Bluetooth, BluetoothConnected, BluetoothOff, RefreshCw, ActivitySquare, Heart, Brain, Footprints } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 const DeviceConnection = () => {
   const { 
@@ -18,9 +20,10 @@ const DeviceConnection = () => {
     connectToDevice, 
     disconnectDevice, 
     syncData,
-    availableDevices
+    availableDevices,
+    dataFetchStatus
   } = useBluetooth();
-  const { healthData, hasRealData } = useData();
+  const { healthData, hasRealData, isMonitoring, startRealTimeMonitoring, stopRealTimeMonitoring } = useData();
   const [isSyncing, setIsSyncing] = useState(false);
 
   const handleScanClick = async () => {
@@ -35,6 +38,14 @@ const DeviceConnection = () => {
     setIsSyncing(true);
     await syncData();
     setIsSyncing(false);
+  };
+
+  const handleMonitoringToggle = (dataType: string, isEnabled: boolean) => {
+    if (isEnabled) {
+      startRealTimeMonitoring(dataType);
+    } else {
+      stopRealTimeMonitoring(dataType);
+    }
   };
 
   return (
@@ -109,6 +120,50 @@ const DeviceConnection = () => {
                     </>
                   )}
                 </span>
+              </div>
+              
+              <div className="border-t pt-3 mt-3">
+                <h4 className="text-sm font-medium mb-2">Real-time Monitoring</h4>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Heart className="h-4 w-4 text-red-500" />
+                      <Label htmlFor="heart-rate-monitor" className="text-sm">Heart Rate</Label>
+                    </div>
+                    <Switch 
+                      id="heart-rate-monitor" 
+                      checked={isMonitoring.heartRate}
+                      onCheckedChange={(checked) => handleMonitoringToggle('heartRate', checked)}
+                      disabled={!isConnected}
+                    />
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Brain className="h-4 w-4 text-purple-500" />
+                      <Label htmlFor="hrv-monitor" className="text-sm">Heart Rate Variability</Label>
+                    </div>
+                    <Switch 
+                      id="hrv-monitor" 
+                      checked={isMonitoring.hrv}
+                      onCheckedChange={(checked) => handleMonitoringToggle('hrv', checked)}
+                      disabled={!isConnected}
+                    />
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Footprints className="h-4 w-4 text-green-500" />
+                      <Label htmlFor="steps-monitor" className="text-sm">Steps</Label>
+                    </div>
+                    <Switch 
+                      id="steps-monitor" 
+                      checked={isMonitoring.steps}
+                      onCheckedChange={(checked) => handleMonitoringToggle('steps', checked)} 
+                      disabled={!isConnected}
+                    />
+                  </div>
+                </div>
               </div>
             </>
           )}

@@ -38,7 +38,7 @@ const DataDashboard = () => {
             </div>
           ) : !hasRealData ? (
             <div className="space-y-4">
-              <Alert variant="warning" className="bg-amber-50 border-amber-200">
+              <Alert className="bg-amber-50 border-amber-200">
                 <InfoIcon className="h-4 w-4 text-amber-600" />
                 <AlertTitle>Simulated Data</AlertTitle>
                 <AlertDescription>
