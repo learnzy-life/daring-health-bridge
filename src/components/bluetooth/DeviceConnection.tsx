@@ -4,7 +4,7 @@ import { useBluetooth } from "@/context/BluetoothContext";
 import { useData } from "@/context/DataContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Bluetooth, BluetoothConnected, BluetoothOff, RefreshCw } from "lucide-react";
+import { Bluetooth, BluetoothConnected, BluetoothOff, RefreshCw, ActivitySquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const DeviceConnection = () => {
@@ -20,7 +20,7 @@ const DeviceConnection = () => {
     syncData,
     availableDevices
   } = useBluetooth();
-  const { healthData } = useData();
+  const { healthData, hasRealData } = useData();
   const [isSyncing, setIsSyncing] = useState(false);
 
   const handleScanClick = async () => {
@@ -95,6 +95,20 @@ const DeviceConnection = () => {
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">Last Synced:</span>
                 <span className="font-medium">{lastSyncTime || "Never"}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-600">Data Status:</span>
+                <span className={cn(
+                  "font-medium flex items-center",
+                  hasRealData ? "text-green-600" : "text-amber-600"
+                )}>
+                  {hasRealData ? "Real" : (
+                    <>
+                      <ActivitySquare className="h-3 w-3 mr-1" />
+                      Simulated
+                    </>
+                  )}
+                </span>
               </div>
             </>
           )}

@@ -2,6 +2,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
+import { ActivitySquare } from "lucide-react";
 
 interface ChartItem {
   name: string;
@@ -18,6 +19,7 @@ interface DataCardProps {
   chart?: ChartItem[];
   color?: "blue" | "red" | "green" | "purple" | "indigo" | "orange";
   className?: string;
+  simulated?: boolean;
 }
 
 const DataCard: React.FC<DataCardProps> = ({
@@ -29,7 +31,8 @@ const DataCard: React.FC<DataCardProps> = ({
   progress,
   chart,
   color = "blue",
-  className
+  className,
+  simulated = false
 }) => {
   const getColorClasses = () => {
     switch (color) {
@@ -78,10 +81,18 @@ const DataCard: React.FC<DataCardProps> = ({
   };
 
   return (
-    <Card className={cn("shadow-sm overflow-hidden", className)}>
+    <Card className={cn("shadow-sm overflow-hidden", className, simulated ? "opacity-80" : "")}>
       <CardHeader className={cn("py-3 px-4 border-b", getColorClasses())}>
         <CardTitle className="text-base font-medium flex items-center justify-between">
-          {title}
+          <div className="flex items-center">
+            {title}
+            {simulated && (
+              <span className="ml-2 text-xs bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded-full flex items-center">
+                <ActivitySquare className="h-3 w-3 mr-1" />
+                Simulated
+              </span>
+            )}
+          </div>
           {trend && <span className="flex items-center">{getTrendIcon()}</span>}
         </CardTitle>
       </CardHeader>

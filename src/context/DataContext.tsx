@@ -7,6 +7,7 @@ interface HealthData {
     value: number;
     unit: string;
     timestamp: string;
+    isReal: boolean;
   };
   sleep: {
     duration: number;
@@ -14,11 +15,13 @@ interface HealthData {
     light: number;
     rem: number;
     timestamp: string;
+    isReal: boolean;
   };
   steps: {
     count: number;
     goal: number;
     timestamp: string;
+    isReal: boolean;
   };
   heartRate: {
     current: number;
@@ -26,17 +29,20 @@ interface HealthData {
     max: number;
     avg: number;
     timestamp: string;
+    isReal: boolean;
   };
   stress: {
     score: number;
     level: "low" | "medium" | "high";
     timestamp: string;
+    isReal: boolean;
   };
   deviceInfo: {
     batteryLevel: number | null;
     firmware: string;
     lastSync: string | null;
     model: string;
+    isReal: boolean;
   };
 }
 
@@ -44,6 +50,7 @@ interface DataContextType {
   healthData: HealthData;
   updateHealthData: (key: keyof HealthData, value: any) => void;
   getApiData: (endpoint: string) => any;
+  hasRealData: boolean;
 }
 
 const initialHealthData: HealthData = {
@@ -51,6 +58,7 @@ const initialHealthData: HealthData = {
     value: 68,
     unit: "ms",
     timestamp: new Date().toISOString(),
+    isReal: false,
   },
   sleep: {
     duration: 7.5,
@@ -58,11 +66,13 @@ const initialHealthData: HealthData = {
     light: 4.3,
     rem: 2.0,
     timestamp: new Date().toISOString(),
+    isReal: false,
   },
   steps: {
     count: 4235,
     goal: 10000,
     timestamp: new Date().toISOString(),
+    isReal: false,
   },
   heartRate: {
     current: 72,
@@ -70,17 +80,20 @@ const initialHealthData: HealthData = {
     max: 120,
     avg: 68,
     timestamp: new Date().toISOString(),
+    isReal: false,
   },
   stress: {
     score: 32,
     level: "low",
     timestamp: new Date().toISOString(),
+    isReal: false,
   },
   deviceInfo: {
     batteryLevel: null,
     firmware: "v1.2.3",
     lastSync: null,
     model: "Daring Ring Pro",
+    isReal: false,
   },
 };
 
@@ -89,6 +102,7 @@ const DataContext = createContext<DataContextType | undefined>(undefined);
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [healthData, setHealthData] = useState<HealthData>(initialHealthData);
   const { batteryLevel, lastSyncTime, isConnected } = useBluetooth();
+  const [hasRealData, setHasRealData] = useState(false);
 
   // Update device info when Bluetooth state changes
   useEffect(() => {
@@ -98,6 +112,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ...prev.deviceInfo,
         batteryLevel,
         lastSync: lastSyncTime,
+        isReal: isConnected && batteryLevel !== null,
       }
     }));
   }, [batteryLevel, lastSyncTime]);
@@ -110,17 +125,27 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setHealthData(prev => {
         const now = new Date().toISOString();
         
+        // Check if this is real data or simulated data
+        // In a real implementation, this would be determined by actual data from the device
+        const isRealData = isConnected && Math.random() > 0.5; // Simulating a 50% chance of getting real data
+        
+        if (isRealData) {
+          setHasRealData(true);
+        }
+        
         return {
           ...prev,
           heartRate: {
             ...prev.heartRate,
             current: Math.floor(65 + Math.random() * 15),
-            timestamp: now
+            timestamp: now,
+            isReal: isRealData,
           },
           steps: {
             ...prev.steps,
             count: prev.steps.count + Math.floor(Math.random() * 20),
-            timestamp: now
+            timestamp: now,
+            isReal: isRealData,
           }
         };
       });
@@ -130,14 +155,23 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [isConnected]);
 
   const updateHealthData = (key: keyof HealthData, value: any) => {
-    setHealthData(prev => ({
-      ...prev,
-      [key]: {
-        ...prev[key],
-        ...value,
-        timestamp: new Date().toISOString(),
+    setHealthData(prev => {
+      const isRealData = isConnected && value.isReal !== undefined ? value.isReal : false;
+      
+      if (isRealData) {
+        setHasRealData(true);
       }
-    }));
+      
+      return {
+        ...prev,
+        [key]: {
+          ...prev[key],
+          ...value,
+          timestamp: new Date().toISOString(),
+          isReal: isRealData,
+        }
+      };
+    });
   };
 
   const getApiData = (endpoint: string) => {
@@ -163,6 +197,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     healthData,
     updateHealthData,
     getApiData,
+    hasRealData,
   };
 
   return (
