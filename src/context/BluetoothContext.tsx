@@ -1,419 +1,353 @@
-
-import React, { createContext, useState, useContext, useCallback, useEffect } from "react";
+import React, { createContext, useState, useContext, useEffect, useCallback } from "react";
 import { toast } from "sonner";
-import { BLUETOOTH_SERVICES, BLUETOOTH_CHARACTERISTICS } from "../constants/BluetoothServices";
-import { 
-  parseHeartRateData, 
-  parseHrvData, 
-  parseStepData,
-  parseSleepData,
-  parseStressData,
-  parseTemperatureData
-} from "../utils/dataParser";
+import { useBluetooth } from "./BluetoothContext";
 
-interface BluetoothContextType {
-  device: BluetoothDevice | null;
-  server: BluetoothRemoteGATTServer | null;
-  isConnected: boolean;
-  isConnecting: boolean;
-  batteryLevel: number | null;
-  lastSyncTime: string | null;
-  scanForDevices: () => Promise<BluetoothDevice[]>;
-  connectToDevice: (device: BluetoothDevice) => Promise<void>;
-  disconnectDevice: () => void;
-  syncData: () => Promise<void>;
-  availableDevices: BluetoothDevice[];
-  startMeasurement: (type: "heartRate" | "hrv" | "stress" | "bloodOxygen") => Promise<void>;
-  stopMeasurement: (type: "heartRate" | "hrv" | "stress" | "bloodOxygen") => Promise<void>;
-  isMeasuring: { [key: string]: boolean };
-  dataFetchStatus: { [key: string]: "idle" | "fetching" | "success" | "error" };
+interface HealthData {
+  hrv: {
+    value: number;
+    unit: string;
+    timestamp: string;
+    isReal: boolean;
+  };
+  sleep: {
+    duration: number;
+    deep: number;
+    light: number;
+    rem: number;
+    timestamp: string;
+    isReal: boolean;
+  };
+  steps: {
+    count: number;
+    goal: number;
+    timestamp: string;
+    isReal: boolean;
+  };
+  heartRate: {
+    current: number;
+    min: number;
+    max: number;
+    avg: number;
+    timestamp: string;
+    isReal: boolean;
+  };
+  stress: {
+    score: number;
+    level: "low" | "medium" | "high";
+    timestamp: string;
+    isReal: boolean;
+  };
+  deviceInfo: {
+    batteryLevel: number | null;
+    firmware: string;
+    lastSync: string | null;
+    model: string;
+    isReal: boolean;
+  };
 }
 
-const BluetoothContext = createContext<BluetoothContextType | undefined>(undefined);
+interface DataContextType {
+  healthData: HealthData;
+  updateHealthData: (key: keyof HealthData, value: any) => void;
+  getApiData: (endpoint: string) => any;
+  hasRealData: boolean;
+  startRealTimeMonitoring: (dataType: string) => void;
+  stopRealTimeMonitoring: (dataType: string) => void;
+  isMonitoring: { [key: string]: boolean };
+}
 
-export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [device, setDevice] = useState<BluetoothDevice | null>(null);
-  const [server, setServer] = useState<BluetoothRemoteGATTServer | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
-  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
-  const [availableDevices, setAvailableDevices] = useState<BluetoothDevice[]>([]);
-  const [isMeasuring, setIsMeasuring] = useState<{ [key: string]: boolean }>({
+const initialHealthData: HealthData = {
+  hrv: {
+    value: 68,
+    unit: "ms",
+    timestamp: new Date().toISOString(),
+    isReal: false,
+  },
+  sleep: {
+    duration: 7.5,
+    deep: 1.2,
+    light: 4.3,
+    rem: 2.0,
+    timestamp: new Date().toISOString(),
+    isReal: false,
+  },
+  steps: {
+    count: 4235,
+    goal: 10000,
+    timestamp: new Date().toISOString(),
+    isReal: false,
+  },
+  heartRate: {
+    current: 72,
+    min: 58,
+    max: 120,
+    avg: 68,
+    timestamp: new Date().toISOString(),
+    isReal: false,
+  },
+  stress: {
+    score: 32,
+    level: "low",
+    timestamp: new Date().toISOString(),
+    isReal: false,
+  },
+  deviceInfo: {
+    batteryLevel: null,
+    firmware: "v1.2.3",
+    lastSync: null,
+    model: "Daring Ring Pro",
+    isReal: false,
+  },
+};
+
+const DataContext = createContext<DataContextType | undefined>(undefined);
+
+export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [healthData, setHealthData] = useState<HealthData>(initialHealthData);
+  const { batteryLevel, lastSyncTime, isConnected, startMeasurement, stopMeasurement, isMeasuring } = useBluetooth();
+  const [hasRealData, setHasRealData] = useState(false);
+  const [isMonitoring, setIsMonitoring] = useState<{ [key: string]: boolean }>({
     heartRate: false,
     hrv: false,
-    stress: false,
-    bloodOxygen: false
-  });
-  const [dataFetchStatus, setDataFetchStatus] = useState<{ [key: string]: "idle" | "fetching" | "success" | "error" }>({
-    heartRate: "idle",
-    hrv: "idle",
-    steps: "idle",
-    sleep: "idle",
-    stress: "idle",
-    temperature: "idle"
+    steps: false,
+    sleep: false,
+    stress: false
   });
 
-  // Check if Web Bluetooth is supported
-  const isBluetoothSupported = useCallback(() => {
-    return navigator.bluetooth !== undefined;
-  }, []);
+  // Update device info when Bluetooth state changes
+  useEffect(() => {
+    setHealthData(prev => ({
+      ...prev,
+      deviceInfo: {
+        ...prev.deviceInfo,
+        batteryLevel,
+        lastSync: lastSyncTime,
+        isReal: isConnected && batteryLevel !== null,
+      }
+    }));
+  }, [batteryLevel, lastSyncTime, isConnected]);
 
-  // Scan for Bluetooth devices
-  const scanForDevices = useCallback(async (): Promise<BluetoothDevice[]> => {
-    if (!isBluetoothSupported()) {
-      toast.error("Web Bluetooth is not supported in this browser");
-      return [];
-    }
-
-    try {
-      setIsConnecting(true);
+  // Listen for health data updates from the Bluetooth context
+  useEffect(() => {
+    const handleHealthDataUpdate = (event: Event) => {
+      const { type, data } = (event as CustomEvent).detail;
       
-      // Define the services we're looking for - include both standard services and custom ones
-      const optionalServices = [
-        'battery_service',
-        'device_information',
-        'heart_rate',
-        // Include our custom service UUIDs here
-        BLUETOOTH_SERVICES.HRV_SERVICE,
-        BLUETOOTH_SERVICES.SLEEP_SERVICE,
-        BLUETOOTH_SERVICES.STEPS_SERVICE,
-        BLUETOOTH_SERVICES.STRESS_SERVICE,
-        BLUETOOTH_SERVICES.TEMPERATURE_SERVICE
-      ];
-      
-      // First try to find specifically Daring ring devices
-      let devices: BluetoothDevice;
-      try {
-        devices = await navigator.bluetooth.requestDevice({
-          filters: [
-            { namePrefix: "Daring" },      // Filter by name prefix
-            { namePrefix: "Smart Ring" },  // Alternative name prefix
-            { services: [BLUETOOTH_SERVICES.HEART_RATE] } // Filter by a service we expect the ring to have
-          ],
-          optionalServices
-        });
-      } catch (e) {
-        // If no Daring rings found, broaden the search
-        console.log("No Daring rings found, broadening search...");
-        devices = await navigator.bluetooth.requestDevice({
-          acceptAllDevices: true,
-          optionalServices
-        });
+      if (data.isReal) {
+        setHasRealData(true);
       }
       
-      setAvailableDevices(prev => {
-        if (prev.some(d => d.id === devices.id)) {
-          return prev;
+      setHealthData(prev => {
+        switch (type) {
+          case 'heartRate':
+            // Update min/max values if needed
+            const min = data.current < prev.heartRate.min ? data.current : prev.heartRate.min;
+            const max = data.current > prev.heartRate.max ? data.current : prev.heartRate.max;
+            
+            // Calculate running average
+            const newAvg = prev.heartRate.isReal ? 
+              (prev.heartRate.avg + data.current) / 2 : 
+              data.current;
+            
+            return {
+              ...prev,
+              heartRate: {
+                ...prev.heartRate,
+                current: data.current,
+                min,
+                max,
+                avg: newAvg,
+                timestamp: data.timestamp,
+                isReal: data.isReal,
+              }
+            };
+            
+          case 'hrv':
+            return {
+              ...prev,
+              hrv: {
+                ...prev.hrv,
+                value: data.value,
+                timestamp: data.timestamp,
+                isReal: data.isReal,
+              }
+            };
+            
+          case 'steps':
+            return {
+              ...prev,
+              steps: {
+                ...prev.steps,
+                count: data.count,
+                timestamp: data.timestamp,
+                isReal: data.isReal,
+              }
+            };
+            
+          case 'sleep':
+            return {
+              ...prev,
+              sleep: {
+                ...data,
+                isReal: data.isReal,
+              }
+            };
+            
+          case 'stress':
+            return {
+              ...prev,
+              stress: {
+                ...data,
+                isReal: data.isReal,
+              }
+            };
+            
+          default:
+            return prev;
         }
-        return [...prev, devices];
       });
-      
-      toast.success(`Device found: ${devices.name || "Unknown Device"}`);
-      return [devices];
-    } catch (error) {
-      console.error("Error scanning for devices:", error);
-      // Don't show error if user just canceled the dialog
-      if (error instanceof Error && error.name !== "NotFoundError") {
-        toast.error("Failed to scan for devices");
-      }
-      return [];
-    } finally {
-      setIsConnecting(false);
-    }
-  }, [isBluetoothSupported]);
+    };
+    
+    window.addEventListener('healthDataUpdate', handleHealthDataUpdate);
+    return () => window.removeEventListener('healthDataUpdate', handleHealthDataUpdate);
+  }, []);
 
-  // Connect to a specific device
-  const connectToDevice = useCallback(async (deviceToConnect: BluetoothDevice): Promise<void> => {
-    try {
-      setIsConnecting(true);
-      toast.info("Connecting to device...");
-      
-      setDevice(deviceToConnect);
-      
-      // Connect to GATT server
-      const gattServer = await deviceToConnect.gatt?.connect();
-      
-      if (!gattServer) {
-        throw new Error("Failed to connect to GATT server");
-      }
+  // Simulate updating data when no real data is available
+  useEffect(() => {
+    if (!isConnected) return;
+    
+    // Only simulate data if we don't have real data
+    if (hasRealData) return;
 
-      setServer(gattServer);
-      setIsConnected(true);
-      updateLastSyncTime();
-      
-      // Get battery level if service is available
-      try {
-        const batteryService = await gattServer.getPrimaryService("battery_service");
-        const batteryCharacteristic = await batteryService.getCharacteristic("battery_level");
-        const batteryValue = await batteryCharacteristic.readValue();
-        setBatteryLevel(batteryValue.getUint8(0));
+    const interval = setInterval(() => {
+      setHealthData(prev => {
+        const now = new Date().toISOString();
         
-        // Set up notification for battery level changes
-        await batteryCharacteristic.startNotifications();
-        batteryCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
-          const value = (event.target as BluetoothRemoteGATTCharacteristic).value;
-          if (value) {
-            setBatteryLevel(value.getUint8(0));
+        return {
+          ...prev,
+          heartRate: {
+            ...prev.heartRate,
+            current: Math.floor(65 + Math.random() * 15),
+            timestamp: now,
+            isReal: false,
+          },
+          steps: {
+            ...prev.steps,
+            count: prev.steps.count + Math.floor(Math.random() * 20),
+            timestamp: now,
+            isReal: false,
           }
-        });
-      } catch (batteryError) {
-        console.log("Battery service not available", batteryError);
-        setBatteryLevel(null);
-      }
+        };
+      });
+    }, 10000);
 
-      toast.success("Connected to device");
-      
-      // Set up disconnect listener
-      deviceToConnect.addEventListener('gattserverdisconnected', handleDisconnect);
-      
-    } catch (error) {
-      console.error("Error connecting to device:", error);
-      toast.error("Failed to connect to device");
-      setDevice(null);
-      setServer(null);
-      setIsConnected(false);
-    } finally {
-      setIsConnecting(false);
-    }
-  }, []);
+    return () => clearInterval(interval);
+  }, [isConnected, hasRealData]);
 
-  // Handle device disconnection
-  const handleDisconnect = useCallback(() => {
-    setIsConnected(false);
-    setServer(null);
-    toast.warning("Device disconnected");
-    
-    // Reset measurement states
-    setIsMeasuring({
-      heartRate: false,
-      hrv: false,
-      stress: false,
-      bloodOxygen: false
-    });
-    
-    // Reset data fetch statuses
-    setDataFetchStatus({
-      heartRate: "idle",
-      hrv: "idle",
-      steps: "idle",
-      sleep: "idle",
-      stress: "idle",
-      temperature: "idle"
-    });
-  }, []);
-
-  // Manually disconnect from device
-  const disconnectDevice = useCallback(() => {
-    if (device && device.gatt?.connected) {
-      device.gatt.disconnect();
-    }
-    
-    if (device) {
-      device.removeEventListener('gattserverdisconnected', handleDisconnect);
-    }
-    
-    setDevice(null);
-    setServer(null);
-    setIsConnected(false);
-    setBatteryLevel(null);
-    toast.info("Disconnected from device");
-    
-    // Reset all measurement states
-    setIsMeasuring({
-      heartRate: false,
-      hrv: false,
-      stress: false,
-      bloodOxygen: false
-    });
-  }, [device, handleDisconnect]);
-
-  // Update last sync time
-  const updateLastSyncTime = useCallback(() => {
-    const now = new Date();
-    setLastSyncTime(now.toLocaleTimeString());
-  }, []);
-
-  // Start a measurement
-  const startMeasurement = useCallback(async (type: "heartRate" | "hrv" | "stress" | "bloodOxygen"): Promise<void> => {
-    if (!isConnected || !server) {
-      toast.error("Not connected to any device");
+  // Start real-time monitoring for a specific data type
+  const startRealTimeMonitoring = useCallback(async (dataType: string) => {
+    if (!isConnected) {
+      toast.error("Not connected to a device");
       return;
     }
     
-    try {
-      setIsMeasuring(prev => ({ ...prev, [type]: true }));
-      toast.info(`Starting ${type} measurement...`);
-      
-      // This would be implemented differently based on the specific ring's API
-      // Here's a placeholder implementation
-      switch (type) {
-        case "heartRate":
-          try {
-            const service = await server.getPrimaryService(BLUETOOTH_SERVICES.HEART_RATE);
-            const characteristic = await service.getCharacteristic(BLUETOOTH_CHARACTERISTICS.MEASUREMENT_CONTROL);
-            
-            // Send command to start heart rate measurement (this is a placeholder)
-            await characteristic.writeValue(new Uint8Array([0x01]));
-            
-            toast.success("Heart rate measurement started");
-          } catch (error) {
-            console.error("Error starting heart rate measurement:", error);
-            toast.error("Failed to start heart rate measurement");
-            setIsMeasuring(prev => ({ ...prev, heartRate: false }));
-          }
-          break;
-          
-        // Similar implementations for other measurement types
-        case "hrv":
-        case "stress":
-        case "bloodOxygen":
-          // These would be implemented similarly
-          toast.info(`${type} measurement is not yet implemented`);
-          setIsMeasuring(prev => ({ ...prev, [type]: false }));
-          break;
-      }
-    } catch (error) {
-      console.error(`Error starting ${type} measurement:`, error);
-      toast.error(`Failed to start ${type} measurement`);
-      setIsMeasuring(prev => ({ ...prev, [type]: false }));
-    }
-  }, [isConnected, server]);
-
-  // Stop a measurement
-  const stopMeasurement = useCallback(async (type: "heartRate" | "hrv" | "stress" | "bloodOxygen"): Promise<void> => {
-    if (!isConnected || !server) {
-      toast.error("Not connected to any device");
-      return;
-    }
+    setIsMonitoring(prev => ({ ...prev, [dataType]: true }));
     
-    try {
-      toast.info(`Stopping ${type} measurement...`);
-      
-      // This would be implemented differently based on the specific ring's API
-      // Here's a placeholder implementation
-      switch (type) {
-        case "heartRate":
-          try {
-            const service = await server.getPrimaryService(BLUETOOTH_SERVICES.HEART_RATE);
-            const characteristic = await service.getCharacteristic(BLUETOOTH_CHARACTERISTICS.MEASUREMENT_CONTROL);
-            
-            // Send command to stop heart rate measurement (this is a placeholder)
-            await characteristic.writeValue(new Uint8Array([0x00]));
-            
-            toast.success("Heart rate measurement stopped");
-          } catch (error) {
-            console.error("Error stopping heart rate measurement:", error);
-            toast.error("Failed to stop heart rate measurement");
-          } finally {
-            setIsMeasuring(prev => ({ ...prev, heartRate: false }));
-          }
-          break;
-          
-        // Similar implementations for other measurement types
-        case "hrv":
-        case "stress":
-        case "bloodOxygen":
-          // These would be implemented similarly
-          toast.info(`${type} measurement is not yet implemented`);
-          setIsMeasuring(prev => ({ ...prev, [type]: false }));
-          break;
-      }
-    } catch (error) {
-      console.error(`Error stopping ${type} measurement:`, error);
-      toast.error(`Failed to stop ${type} measurement`);
-      setIsMeasuring(prev => ({ ...prev, [type]: false }));
+    // Map data types to their corresponding measurement types
+    const measurementMap: { [key: string]: "heartRate" | "hrv" | "stress" | "bloodOxygen" | null } = {
+      heartRate: "heartRate",
+      hrv: "hrv", 
+      stress: "stress",
+      sleep: null, // Sleep doesn't have real-time monitoring
+      steps: null  // Steps don't have real-time monitoring
+    };
+    
+    // If this data type has a corresponding measurement, start it
+    const measurementType = measurementMap[dataType];
+    if (measurementType) {
+      await startMeasurement(measurementType);
     }
-  }, [isConnected, server]);
+  }, [isConnected, startMeasurement]);
+  
+  // Stop real-time monitoring for a specific data type
+  const stopRealTimeMonitoring = useCallback(async (dataType: string) => {
+    setIsMonitoring(prev => ({ ...prev, [dataType]: false }));
+    
+    // Map data types to their corresponding measurement types
+    const measurementMap: { [key: string]: "heartRate" | "hrv" | "stress" | "bloodOxygen" | null } = {
+      heartRate: "heartRate",
+      hrv: "hrv", 
+      stress: "stress",
+      sleep: null,
+      steps: null
+    };
+    
+    // If this data type has a corresponding measurement, stop it
+    const measurementType = measurementMap[dataType];
+    if (measurementType) {
+      await stopMeasurement(measurementType);
+    }
+  }, [stopMeasurement]);
 
-  // Sync data from the device
-  const syncData = useCallback(async (): Promise<void> => {
-    if (!isConnected || !server) {
-      toast.error("Not connected to any device");
-      return;
-    }
+  const updateHealthData = (key: keyof HealthData, value: any) => {
+    setHealthData(prev => {
+      const isRealData = isConnected && value.isReal !== undefined ? value.isReal : false;
+      
+      if (isRealData) {
+        setHasRealData(true);
+      }
+      
+      return {
+        ...prev,
+        [key]: {
+          ...prev[key],
+          ...value,
+          timestamp: new Date().toISOString(),
+          isReal: isRealData,
+        }
+      };
+    });
+  };
 
-    try {
-      toast.info("Syncing data from device...");
-      
-      // Track which data types were successfully synced
-      const syncedData: string[] = [];
-      
-      // Sync heart rate data
-      try {
-        setDataFetchStatus(prev => ({ ...prev, heartRate: "fetching" }));
-        const heartRateService = await server.getPrimaryService(BLUETOOTH_SERVICES.HEART_RATE);
-        const heartRateCharacteristic = await heartRateService.getCharacteristic(BLUETOOTH_CHARACTERISTICS.HEART_RATE_MEASUREMENT);
-        const heartRateValue = await heartRateCharacteristic.readValue();
-        
-        const heartRateData = parseHeartRateData(heartRateValue);
-        console.log("Heart Rate Data:", heartRateData);
-        
-        // This would trigger an update in the DataContext
-        // Implementation would depend on how we've set up the data flow
-        window.dispatchEvent(new CustomEvent('healthDataUpdate', { 
-          detail: { 
-            type: 'heartRate', 
-            data: {
-              current: heartRateData.heartRate,
-              isReal: true,
-              timestamp: new Date().toISOString()
-            }
-          } 
-        }));
-        
-        setDataFetchStatus(prev => ({ ...prev, heartRate: "success" }));
-        syncedData.push("Heart Rate");
-      } catch (error) {
-        console.error("Error syncing heart rate data:", error);
-        setDataFetchStatus(prev => ({ ...prev, heartRate: "error" }));
-      }
-      
-      // Sync other types of data - this would be expanded based on the ring's capabilities
-      // and the specific services and characteristics it provides
-      
-      updateLastSyncTime();
-      
-      if (syncedData.length > 0) {
-        toast.success(`Data synced successfully: ${syncedData.join(", ")}`);
-      } else {
-        toast.warning("No data could be synced. Try again or check device compatibility.");
-      }
-    } catch (error) {
-      console.error("Error syncing data:", error);
-      toast.error("Failed to sync data");
+  const getApiData = (endpoint: string) => {
+    switch(endpoint) {
+      case "hrv":
+        return healthData.hrv;
+      case "sleep":
+        return healthData.sleep;
+      case "steps":
+        return healthData.steps;
+      case "heart-rate":
+        return healthData.heartRate;
+      case "stress":
+        return healthData.stress;
+      case "device-info":
+        return healthData.deviceInfo;
+      default:
+        return { error: "Endpoint not found" };
     }
-  }, [isConnected, server, updateLastSyncTime]);
+  };
 
   const value = {
-    device,
-    server,
-    isConnected,
-    isConnecting,
-    batteryLevel,
-    lastSyncTime,
-    scanForDevices,
-    connectToDevice,
-    disconnectDevice,
-    syncData,
-    availableDevices,
-    startMeasurement,
-    stopMeasurement,
-    isMeasuring,
-    dataFetchStatus
+    healthData,
+    updateHealthData,
+    getApiData,
+    hasRealData,
+    startRealTimeMonitoring,
+    stopRealTimeMonitoring,
+    isMonitoring
   };
 
   return (
-    <BluetoothContext.Provider value={value}>
+    <DataContext.Provider value={value}>
       {children}
-    </BluetoothContext.Provider>
+    </DataContext.Provider>
   );
 };
 
-export const useBluetooth = () => {
-  const context = useContext(BluetoothContext);
+export const useData = () => {
+  const context = useContext(DataContext);
   if (context === undefined) {
-    throw new Error("useBluetooth must be used within a BluetoothProvider");
+    throw new Error("useData must be used within a DataProvider");
   }
   return context;
 };
