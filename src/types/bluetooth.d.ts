@@ -32,6 +32,11 @@ interface BluetoothRemoteGATTCharacteristic {
   removeEventListener(type: string, listener: EventListenerOrEventListenerObject): void;
 }
 
+// Add a CharacteristicValueChangeEvent interface for better typing
+interface CharacteristicValueChangeEvent extends Event {
+  target: BluetoothRemoteGATTCharacteristic;
+}
+
 interface BluetoothRequestDeviceOptions {
   filters?: BluetoothLEScanFilter[];
   optionalServices?: string[];
@@ -104,4 +109,3 @@ interface TemperatureMeasurement {
   timestamp: string;
   isReal: boolean;
 }
-

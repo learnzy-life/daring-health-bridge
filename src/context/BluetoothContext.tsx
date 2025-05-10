@@ -1,4 +1,3 @@
-
 import React, { createContext, useState, useContext, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { SCAN_SERVICE_UUIDS } from "@/constants/BluetoothServices";
@@ -387,7 +386,7 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [device, isConnected, measurement]);
 
   // Value object containing all context data and functions
-  const value = {
+  const value: BluetoothContextType = {
     isConnected,
     isConnecting,
     device,

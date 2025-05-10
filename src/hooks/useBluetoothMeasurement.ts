@@ -1,4 +1,3 @@
-
 import { useState, useCallback } from 'react';
 import { toast } from "sonner";
 import { BLUETOOTH_SERVICES, BLUETOOTH_CHARACTERISTICS, COMMAND_CODES } from '@/constants/BluetoothServices';
@@ -10,6 +9,7 @@ interface MeasurementState {
   hrv: boolean;
   stress: boolean;
   bloodOxygen: boolean;
+  [key: string]: boolean; // Add index signature to allow string indexing
 }
 
 export const useBluetoothMeasurement = (device: BluetoothDevice | null, isConnected: boolean) => {
@@ -112,9 +112,10 @@ export const useBluetoothMeasurement = (device: BluetoothDevice | null, isConnec
       
       // Set up notification handler
       heartRateCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
-        const dataView = (event.target as BluetoothRemoteGATTCharacteristic).value;
-        if (dataView) {
-          const { heartRate } = parseHeartRateData(dataView);
+        // Cast EventTarget to BluetoothRemoteGATTCharacteristic via unknown
+        const target = event.target as unknown as BluetoothRemoteGATTCharacteristic;
+        if (target && target.value) {
+          const { heartRate } = parseHeartRateData(target.value);
           
           // Dispatch event with real data
           const heartRateEvent = new CustomEvent('healthDataUpdate', {
@@ -212,9 +213,10 @@ export const useBluetoothMeasurement = (device: BluetoothDevice | null, isConnec
       
       // Set up notification handler
       hrvCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
-        const dataView = (event.target as BluetoothRemoteGATTCharacteristic).value;
-        if (dataView) {
-          const { value, status } = parseHrvData(dataView);
+        // Cast EventTarget to BluetoothRemoteGATTCharacteristic via unknown
+        const target = event.target as unknown as BluetoothRemoteGATTCharacteristic;
+        if (target && target.value) {
+          const { value, status } = parseHrvData(target.value);
           
           if (status === 'completed') {
             // Dispatch event with real data
@@ -314,9 +316,10 @@ export const useBluetoothMeasurement = (device: BluetoothDevice | null, isConnec
       
       // Set up notification handler
       stressCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
-        const dataView = (event.target as BluetoothRemoteGATTCharacteristic).value;
-        if (dataView) {
-          const { score, level, status } = parseStressData(dataView);
+        // Cast EventTarget to BluetoothRemoteGATTCharacteristic via unknown
+        const target = event.target as unknown as BluetoothRemoteGATTCharacteristic;
+        if (target && target.value) {
+          const { score, level, status } = parseStressData(target.value);
           
           if (status === 'completed') {
             // Dispatch event with real data
@@ -417,9 +420,10 @@ export const useBluetoothMeasurement = (device: BluetoothDevice | null, isConnec
       
       // Set up notification handler
       bloodOxygenCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
-        const dataView = (event.target as BluetoothRemoteGATTCharacteristic).value;
-        if (dataView) {
-          const { percentage, status } = parseBloodOxygenData(dataView);
+        // Cast EventTarget to BluetoothRemoteGATTCharacteristic via unknown
+        const target = event.target as unknown as BluetoothRemoteGATTCharacteristic;
+        if (target && target.value) {
+          const { percentage, status } = parseBloodOxygenData(target.value);
           
           if (status === 'completed') {
             // Dispatch event with real data
