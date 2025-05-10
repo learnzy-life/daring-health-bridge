@@ -50,15 +50,34 @@ export const parseHeartRateData = (dataView: DataView): {
 };
 
 /**
- * Parses HRV (Heart Rate Variability) data
+ * Parses HRV (Heart Rate Variability) data based on the smart ring format
  * 
  * @param dataView DataView containing HRV data
- * @returns HRV value in milliseconds
+ * @returns Parsed HRV information
  */
-export const parseHrvData = (dataView: DataView): number => {
-  // This implementation would depend on the specific format used by the ring
-  // For now, we'll assume a simple implementation where the first 2 bytes are the HRV in ms
-  return dataView.getUint16(0, true);
+export const parseHrvData = (dataView: DataView): {
+  value: number;
+  status: 'completed' | 'measuring' | 'error';
+} => {
+  // First byte contains status
+  const statusByte = dataView.getUint8(0);
+  
+  let status: 'completed' | 'measuring' | 'error';
+  switch (statusByte) {
+    case 0x00:
+      status = 'measuring';
+      break;
+    case 0x01:
+      status = 'completed';
+      break;
+    default:
+      status = 'error';
+  }
+  
+  // Second and third bytes contain HRV value in ms
+  const value = dataView.getUint16(1, true);
+  
+  return { value, status };
 };
 
 /**
@@ -72,7 +91,7 @@ export const parseStepData = (dataView: DataView): {
   distance?: number;
   calories?: number;
 } => {
-  // Basic implementation - would need to be adjusted based on actual ring data format
+  // First 4 bytes contain step count
   const steps = dataView.getUint32(0, true);
   
   // If additional data is available
@@ -80,10 +99,12 @@ export const parseStepData = (dataView: DataView): {
   let calories: number | undefined;
   
   if (dataView.byteLength >= 8) {
+    // Next 4 bytes contain distance in meters
     distance = dataView.getUint32(4, true);
   }
   
   if (dataView.byteLength >= 12) {
+    // Next 4 bytes contain calories
     calories = dataView.getUint32(8, true);
   }
   
@@ -103,13 +124,13 @@ export const parseSleepData = (dataView: DataView): {
   rem: number;       // in hours
   awake: number;     // in hours
 } => {
-  // This would need to be adjusted based on the actual format from the ring
+  // Convert raw values from minutes to hours
   return {
-    duration: dataView.getFloat32(0, true) / 3600, // Convert seconds to hours
-    deep: dataView.getFloat32(4, true) / 3600,
-    light: dataView.getFloat32(8, true) / 3600,
-    rem: dataView.getFloat32(12, true) / 3600,
-    awake: dataView.getFloat32(16, true) / 3600,
+    duration: dataView.getUint32(0, true) / 60, 
+    deep: dataView.getUint32(4, true) / 60,
+    light: dataView.getUint32(8, true) / 60,
+    rem: dataView.getUint32(12, true) / 60,
+    awake: dataView.getUint32(16, true) / 60,
   };
 };
 
@@ -122,8 +143,25 @@ export const parseSleepData = (dataView: DataView): {
 export const parseStressData = (dataView: DataView): {
   score: number;
   level: "low" | "medium" | "high";
+  status: 'completed' | 'measuring' | 'error';
 } => {
-  const score = dataView.getUint8(0);
+  // First byte contains status
+  const statusByte = dataView.getUint8(0);
+  
+  let status: 'completed' | 'measuring' | 'error';
+  switch (statusByte) {
+    case 0x00:
+      status = 'measuring';
+      break;
+    case 0x01:
+      status = 'completed';
+      break;
+    default:
+      status = 'error';
+  }
+  
+  // Second byte contains the stress score
+  const score = dataView.getUint8(1);
   
   // Determine stress level based on score
   let level: "low" | "medium" | "high";
@@ -135,7 +173,7 @@ export const parseStressData = (dataView: DataView): {
     level = "high";
   }
   
-  return { score, level };
+  return { score, level, status };
 };
 
 /**
@@ -144,7 +182,60 @@ export const parseStressData = (dataView: DataView): {
  * @param dataView DataView containing temperature data
  * @returns Temperature in Celsius
  */
-export const parseTemperatureData = (dataView: DataView): number => {
-  // Assuming temperature is stored as a float in Celsius
-  return dataView.getFloat32(0, true);
+export const parseTemperatureData = (dataView: DataView): {
+  temperature: number;
+  status: 'completed' | 'measuring' | 'error';
+} => {
+  // First byte contains status
+  const statusByte = dataView.getUint8(0);
+  
+  let status: 'completed' | 'measuring' | 'error';
+  switch (statusByte) {
+    case 0x00:
+      status = 'measuring';
+      break;
+    case 0x01:
+      status = 'completed';
+      break;
+    default:
+      status = 'error';
+  }
+  
+  // Temperature is stored as a float in Celsius
+  // With the first byte being status, temperature starts at index 1
+  const temperature = dataView.getFloat32(1, true);
+  
+  return { temperature, status };
 };
+
+/**
+ * Parses blood oxygen data from the ring
+ * 
+ * @param dataView DataView containing blood oxygen data
+ * @returns Blood oxygen percentage and status
+ */
+export const parseBloodOxygenData = (dataView: DataView): {
+  percentage: number;
+  status: 'completed' | 'measuring' | 'error';
+} => {
+  // First byte contains status
+  const statusByte = dataView.getUint8(0);
+  
+  let status: 'completed' | 'measuring' | 'error';
+  switch (statusByte) {
+    case 0x00:
+      status = 'measuring';
+      break;
+    case 0x01:
+      status = 'completed';
+      break;
+    default:
+      status = 'error';
+  }
+  
+  // Second byte contains blood oxygen percentage
+  const percentage = dataView.getUint8(1);
+  
+  return { percentage, status };
+};
+

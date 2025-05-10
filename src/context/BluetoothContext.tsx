@@ -1,6 +1,8 @@
 
 import React, { createContext, useState, useContext, useEffect, useCallback } from "react";
 import { toast } from "sonner";
+import { SCAN_SERVICE_UUIDS } from "@/constants/BluetoothServices";
+import { useBluetoothMeasurement } from "@/hooks/useBluetoothMeasurement";
 
 // Define types for the Bluetooth Context
 interface BluetoothContextType {
@@ -16,6 +18,8 @@ interface BluetoothContextType {
   connectToDevice: (device: BluetoothDevice) => Promise<void>;
   disconnectDevice: () => Promise<void>;
   syncData: () => Promise<void>;
+  syncTime: () => Promise<boolean>;
+  sendUserInfo: (weight: number, height: number, gender: 0 | 1, age: number, stepLength: number) => Promise<boolean>;
   startMeasurement: (type: "heartRate" | "hrv" | "stress" | "bloodOxygen") => Promise<void>;
   stopMeasurement: (type: "heartRate" | "hrv" | "stress" | "bloodOxygen") => Promise<void>;
 }
@@ -32,13 +36,10 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [availableDevices, setAvailableDevices] = useState<BluetoothDevice[]>([]);
   const [dataFetchStatus, setDataFetchStatus] = useState<{ [key: string]: boolean }>({});
-  const [isMeasuring, setIsMeasuring] = useState<{ [key: string]: boolean }>({
-    heartRate: false,
-    hrv: false,
-    stress: false,
-    bloodOxygen: false
-  });
-
+  
+  // Get the measurement functions from our hook
+  const measurement = useBluetoothMeasurement(device, isConnected);
+  
   // Function to scan for Bluetooth devices
   const scanForDevices = useCallback(async () => {
     try {
@@ -53,11 +54,16 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       
       toast.info("Scanning for devices...");
       
-      // Request nearby Bluetooth devices
+      // Request nearby Bluetooth devices with specific services
       const devices = await navigator.bluetooth.requestDevice({
-        // Accept all devices that can connect
-        acceptAllDevices: true,
-        optionalServices: ['battery_service', 'heart_rate', 'generic_access']
+        // Let user pick from compatible devices
+        filters: [
+          { services: [SCAN_SERVICE_UUIDS[0]] },
+          { services: [SCAN_SERVICE_UUIDS[1]] },
+          { services: [SCAN_SERVICE_UUIDS[2]] }
+        ],
+        // Request specific services the device must have
+        optionalServices: SCAN_SERVICE_UUIDS
       });
       
       if (devices) {
@@ -147,15 +153,11 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       setDataFetchStatus(prev => ({ ...prev, syncing: true }));
       
       // Update last sync time
-      setLastSyncTime(new Date().toLocaleString());
+      const currentTime = new Date().toLocaleString();
+      setLastSyncTime(currentTime);
       
-      // Simulate syncing various data types
-      // In a real app, you'd read from specific Bluetooth characteristics
-      simulateDataSync('heartRate');
-      simulateDataSync('hrv');
-      simulateDataSync('steps');
-      simulateDataSync('sleep');
-      simulateDataSync('stress');
+      // Sync time with the device
+      await measurement.syncTime();
       
       // Query battery level
       try {
@@ -169,6 +171,13 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         setBatteryLevel(Math.floor(Math.random() * 41) + 60); // Simulate 60-100%
       }
       
+      // Simulate data sync events for other metrics
+      simulateDataSync('heartRate');
+      simulateDataSync('hrv');
+      simulateDataSync('steps');
+      simulateDataSync('sleep');
+      simulateDataSync('stress');
+      
       toast.success("Data sync complete");
     } catch (error) {
       console.error("Data sync failed:", error);
@@ -176,7 +185,39 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } finally {
       setDataFetchStatus(prev => ({ ...prev, syncing: false }));
     }
-  }, [device]);
+  }, [device, measurement]);
+  
+  // Sync time with the device - this uses our measurement hook
+  const syncTime = useCallback(async () => {
+    if (!device || !isConnected) {
+      toast.error("No device connected");
+      return false;
+    }
+    
+    const success = await measurement.syncTime();
+    if (success) {
+      // Update last sync time
+      const currentTime = new Date().toLocaleString();
+      setLastSyncTime(currentTime);
+    }
+    return success;
+  }, [device, isConnected, measurement]);
+  
+  // Send user information to the device
+  const sendUserInfo = useCallback(async (
+    weight: number, 
+    height: number, 
+    gender: 0 | 1, 
+    age: number, 
+    stepLength: number
+  ) => {
+    if (!device || !isConnected) {
+      toast.error("No device connected");
+      return false;
+    }
+    
+    return measurement.sendUserInfo(weight, height, gender, age, stepLength);
+  }, [device, isConnected, measurement]);
 
   // Function to simulate data sync events
   const simulateDataSync = (dataType: string) => {
@@ -273,25 +314,41 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
     
     try {
-      setIsMeasuring(prev => ({ ...prev, [type]: true }));
-      toast.info(`Starting ${type} measurement...`);
+      let success = false;
       
-      // In a real app, this would send commands to the device to start measurements
-      // For now, let's simulate data updates
-      const interval = setInterval(() => {
-        simulateDataSync(type);
-      }, 3000);
+      // Call the appropriate measurement function
+      switch (type) {
+        case "heartRate":
+          success = await measurement.startHeartRateMeasurement();
+          break;
+        case "hrv":
+          success = await measurement.startHrvMeasurement();
+          break;
+        case "stress":
+          success = await measurement.startStressMeasurement();
+          break;
+        case "bloodOxygen":
+          success = await measurement.startBloodOxygenMeasurement();
+          break;
+      }
       
-      // Store interval ID to clean up later (in a real app)
-      // This is simplified - you'd want a better way to manage multiple intervals
-      (window as any)[`${type}Interval`] = interval;
+      // If we couldn't start the real measurement, simulate it
+      if (!success) {
+        // In a real app, we'd handle this differently
+        // For now, let's simulate data for demo purposes
+        const interval = setInterval(() => {
+          simulateDataSync(type);
+        }, 3000);
+        
+        // Store interval ID to clean up later
+        (window as any)[`${type}Interval`] = interval;
+      }
       
     } catch (error) {
       console.error(`Failed to start ${type} measurement:`, error);
       toast.error(`Failed to start ${type} measurement: ${(error as Error).message}`);
-      setIsMeasuring(prev => ({ ...prev, [type]: false }));
     }
-  }, [device, isConnected]);
+  }, [device, isConnected, measurement]);
 
   // Stop real-time measurement for a specific metric
   const stopMeasurement = useCallback(async (type: "heartRate" | "hrv" | "stress" | "bloodOxygen") => {
@@ -300,22 +357,34 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
     
     try {
-      toast.info(`Stopping ${type} measurement`);
+      // Call the appropriate stop function
+      switch (type) {
+        case "heartRate":
+          await measurement.stopHeartRateMeasurement();
+          break;
+        case "hrv":
+          await measurement.stopHrvMeasurement();
+          break;
+        case "stress":
+          await measurement.stopStressMeasurement();
+          break;
+        case "bloodOxygen":
+          await measurement.stopBloodOxygenMeasurement();
+          break;
+      }
       
-      // Clear the interval for this measurement type
+      // Clear the interval for this measurement type if it exists
       const interval = (window as any)[`${type}Interval`];
       if (interval) {
         clearInterval(interval);
         (window as any)[`${type}Interval`] = null;
       }
       
-      setIsMeasuring(prev => ({ ...prev, [type]: false }));
-      
     } catch (error) {
       console.error(`Failed to stop ${type} measurement:`, error);
       toast.error(`Failed to stop ${type}: ${(error as Error).message}`);
     }
-  }, [device, isConnected]);
+  }, [device, isConnected, measurement]);
 
   // Value object containing all context data and functions
   const value = {
@@ -326,11 +395,13 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     lastSyncTime,
     availableDevices,
     dataFetchStatus,
-    isMeasuring,
+    isMeasuring: measurement.isMeasuring,
     scanForDevices,
     connectToDevice,
     disconnectDevice,
     syncData,
+    syncTime,
+    sendUserInfo,
     startMeasurement,
     stopMeasurement
   };

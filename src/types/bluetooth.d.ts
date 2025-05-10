@@ -4,7 +4,7 @@
 
 interface BluetoothDevice {
   id: string;
-  name: string;
+  name?: string;
   gatt?: BluetoothRemoteGATTServer;
   addEventListener(type: string, listener: EventListenerOrEventListenerObject): void;
   removeEventListener(type: string, listener: EventListenerOrEventListenerObject): void;
@@ -23,6 +23,7 @@ interface BluetoothRemoteGATTService {
 }
 
 interface BluetoothRemoteGATTCharacteristic {
+  value?: DataView;
   readValue(): Promise<DataView>;
   writeValue(value: BufferSource): Promise<void>;
   startNotifications(): Promise<BluetoothRemoteGATTCharacteristic>;
@@ -63,3 +64,44 @@ interface Navigator {
     getAvailability(): Promise<boolean>;
   };
 }
+
+// Custom event types for health data updates
+interface HealthDataUpdateEvent extends CustomEvent {
+  detail: {
+    type: string;
+    data: any;
+  };
+}
+
+// Types for measurement events
+interface HeartRateMeasurement {
+  current: number;
+  timestamp: string;
+  isReal: boolean;
+}
+
+interface HrvMeasurement {
+  value: number;
+  timestamp: string;
+  isReal: boolean;
+}
+
+interface StressMeasurement {
+  score: number;
+  level: "low" | "medium" | "high";
+  timestamp: string;
+  isReal: boolean;
+}
+
+interface BloodOxygenMeasurement {
+  percentage: number;
+  timestamp: string;
+  isReal: boolean;
+}
+
+interface TemperatureMeasurement {
+  temperature: number;
+  timestamp: string;
+  isReal: boolean;
+}
+
