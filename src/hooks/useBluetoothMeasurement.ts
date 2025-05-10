@@ -1,3 +1,4 @@
+
 import { useState, useCallback } from 'react';
 import { toast } from "sonner";
 import { BLUETOOTH_SERVICES, BLUETOOTH_CHARACTERISTICS, COMMAND_CODES } from '@/constants/BluetoothServices';
@@ -39,12 +40,14 @@ export const useBluetoothMeasurement = (device: BluetoothDevice | null, isConnec
     }
     
     try {
+      console.log("Attempting to sync time...");
       const controlService = await device.gatt.getPrimaryService(BLUETOOTH_SERVICES.CONTROL_SERVICE);
       const timeCharacteristic = await controlService.getCharacteristic(BLUETOOTH_CHARACTERISTICS.SYNC_TIME);
       
       const timeBuffer = createTimeBuffer();
       await timeCharacteristic.writeValue(timeBuffer);
       
+      console.log("Time sync successful");
       toast.success("Time synchronized with device");
       return true;
     } catch (error) {
@@ -198,9 +201,38 @@ export const useBluetoothMeasurement = (device: BluetoothDevice | null, isConnec
     }
     
     try {
-      // First, try to set up notifications for HRV
-      const hrvService = await device.gatt.getPrimaryService(BLUETOOTH_SERVICES.HRV_SERVICE);
-      const hrvCharacteristic = await hrvService.getCharacteristic(BLUETOOTH_CHARACTERISTICS.HRV_MEASUREMENT);
+      console.log("Starting HRV measurement - attempting to access HRV service...");
+      
+      // Try multiple possible HRV services
+      let hrvService;
+      let hrvCharacteristic;
+      
+      try {
+        // Try primary HRV service first
+        console.log("Trying primary HRV service:", BLUETOOTH_SERVICES.HRV_SERVICE);
+        hrvService = await device.gatt.getPrimaryService(BLUETOOTH_SERVICES.HRV_SERVICE);
+        hrvCharacteristic = await hrvService.getCharacteristic(BLUETOOTH_CHARACTERISTICS.HRV_MEASUREMENT);
+      } catch (e) {
+        console.log("Primary HRV service not found, trying alternative service...");
+        try {
+          // Try alternative HRV service
+          hrvService = await device.gatt.getPrimaryService(BLUETOOTH_SERVICES.ALT_HRV_SERVICE);
+          hrvCharacteristic = await hrvService.getCharacteristic(BLUETOOTH_CHARACTERISTICS.ALT_HRV_MEASUREMENT);
+          console.log("Alternative HRV service found");
+        } catch (e2) {
+          console.log("Alternative HRV service not found, trying heart rate service...");
+          // As a last resort, try the heart rate service
+          hrvService = await device.gatt.getPrimaryService(BLUETOOTH_SERVICES.HEART_RATE);
+          hrvCharacteristic = await hrvService.getCharacteristic(BLUETOOTH_CHARACTERISTICS.HEART_RATE_MEASUREMENT);
+          console.log("Using heart rate service for HRV");
+        }
+      }
+      
+      if (!hrvCharacteristic) {
+        throw new Error("Could not find a suitable HRV characteristic");
+      }
+      
+      console.log("HRV characteristic found, enabling notifications");
       
       // Enable notifications
       await hrvCharacteristic.startNotifications();
@@ -213,37 +245,58 @@ export const useBluetoothMeasurement = (device: BluetoothDevice | null, isConnec
       
       // Set up notification handler
       hrvCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
+        console.log("HRV notification received:", event);
+        
         // Cast EventTarget to BluetoothRemoteGATTCharacteristic via unknown
         const target = event.target as unknown as BluetoothRemoteGATTCharacteristic;
         if (target && target.value) {
-          const { value, status } = parseHrvData(target.value);
+          console.log("HRV raw data:", target.value);
           
-          if (status === 'completed') {
-            // Dispatch event with real data
-            const hrvEvent = new CustomEvent('healthDataUpdate', {
-              detail: {
-                type: 'hrv',
-                data: {
-                  value,
-                  timestamp: new Date().toISOString(),
-                  isReal: true
+          try {
+            const { value, status } = parseHrvData(target.value);
+            console.log("Parsed HRV data:", { value, status });
+            
+            if (status === 'completed' || status === 'measuring') {
+              // Dispatch event with real data
+              const hrvEvent = new CustomEvent('healthDataUpdate', {
+                detail: {
+                  type: 'hrv',
+                  data: {
+                    value,
+                    timestamp: new Date().toISOString(),
+                    isReal: true
+                  }
                 }
-              }
-            });
-            window.dispatchEvent(hrvEvent);
+              });
+              window.dispatchEvent(hrvEvent);
+              console.log("HRV event dispatched");
+            }
+          } catch (error) {
+            console.error("Error parsing HRV data:", error);
           }
         }
       });
+      
+      console.log("HRV notifications set up, sending command to start measurement");
       
       // Now send command to start HRV measurement
       const controlService = await device.gatt.getPrimaryService(BLUETOOTH_SERVICES.CONTROL_SERVICE);
       const controlCharacteristic = await controlService.getCharacteristic(BLUETOOTH_CHARACTERISTICS.MEASUREMENT_CONTROL);
       
-      const commandBuffer = createCommandBuffer(COMMAND_CODES.START_HRV);
-      await controlCharacteristic.writeValue(commandBuffer);
+      // Try both standard and alternative commands
+      try {
+        console.log("Sending standard HRV start command...");
+        const commandBuffer = createCommandBuffer(COMMAND_CODES.START_HRV);
+        await controlCharacteristic.writeValue(commandBuffer);
+      } catch (e) {
+        console.log("Standard HRV command failed, trying alternative command...");
+        const altCommandBuffer = createCommandBuffer(COMMAND_CODES.ALT_START_HRV);
+        await controlCharacteristic.writeValue(altCommandBuffer);
+      }
       
       setIsMeasuring(prev => ({ ...prev, hrv: true }));
       toast.success("HRV measurement started");
+      console.log("HRV measurement started successfully");
       return true;
     } catch (error) {
       console.error("Failed to start HRV measurement:", error);
@@ -262,12 +315,21 @@ export const useBluetoothMeasurement = (device: BluetoothDevice | null, isConnec
     }
     
     try {
+      console.log("Stopping HRV measurement...");
+      
       // Send command to stop HRV measurement
       const controlService = await device.gatt.getPrimaryService(BLUETOOTH_SERVICES.CONTROL_SERVICE);
       const controlCharacteristic = await controlService.getCharacteristic(BLUETOOTH_CHARACTERISTICS.MEASUREMENT_CONTROL);
       
-      const commandBuffer = createCommandBuffer(COMMAND_CODES.STOP_HRV);
-      await controlCharacteristic.writeValue(commandBuffer);
+      try {
+        // Try standard command first
+        const commandBuffer = createCommandBuffer(COMMAND_CODES.STOP_HRV);
+        await controlCharacteristic.writeValue(commandBuffer);
+      } catch (e) {
+        // Try alternative command
+        const altCommandBuffer = createCommandBuffer(COMMAND_CODES.ALT_STOP_HRV);
+        await controlCharacteristic.writeValue(altCommandBuffer);
+      }
       
       // Stop notifications
       const hrvCharacteristic = notificationCharacteristics.hrv;
@@ -283,6 +345,7 @@ export const useBluetoothMeasurement = (device: BluetoothDevice | null, isConnec
       
       setIsMeasuring(prev => ({ ...prev, hrv: false }));
       toast.success("HRV measurement stopped");
+      console.log("HRV measurement stopped");
       return true;
     } catch (error) {
       console.error("Failed to stop HRV measurement:", error);

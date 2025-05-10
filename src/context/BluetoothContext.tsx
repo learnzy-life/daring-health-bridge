@@ -1,3 +1,4 @@
+
 import React, { createContext, useState, useContext, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { SCAN_SERVICE_UUIDS } from "@/constants/BluetoothServices";
@@ -35,9 +36,27 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [availableDevices, setAvailableDevices] = useState<BluetoothDevice[]>([]);
   const [dataFetchStatus, setDataFetchStatus] = useState<{ [key: string]: boolean }>({});
+  const [realDataReceived, setRealDataReceived] = useState(false);
   
   // Get the measurement functions from our hook
   const measurement = useBluetoothMeasurement(device, isConnected);
+  
+  // Listen for real data events
+  useEffect(() => {
+    const handleHealthDataUpdate = (event: CustomEvent) => {
+      const { type, data } = event.detail;
+      if (data.isReal) {
+        console.log(`Received real ${type} data:`, data);
+        setRealDataReceived(true);
+      }
+    };
+    
+    window.addEventListener('healthDataUpdate', handleHealthDataUpdate as EventListener);
+    
+    return () => {
+      window.removeEventListener('healthDataUpdate', handleHealthDataUpdate as EventListener);
+    };
+  }, []);
   
   // Function to scan for Bluetooth devices
   const scanForDevices = useCallback(async () => {
@@ -52,6 +71,7 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       }
       
       toast.info("Scanning for devices...");
+      console.log("Starting device scan with services:", SCAN_SERVICE_UUIDS);
       
       // Request nearby Bluetooth devices with specific services
       // Use acceptAllDevices to see all available devices including the ring
@@ -59,6 +79,8 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         acceptAllDevices: true,
         optionalServices: SCAN_SERVICE_UUIDS
       });
+      
+      console.log("Device found:", devices);
       
       if (devices) {
         // Add device to available devices list
@@ -70,9 +92,9 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
           return prev;
         });
+        toast.success(`Found device: ${devices.name || 'Unknown device'}`);
       }
       
-      toast.success("Scan complete");
     } catch (error) {
       if ((error as Error).name === 'NotFoundError') {
         toast.error("No devices found or user cancelled");
@@ -90,10 +112,24 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     try {
       setIsConnecting(true);
       toast.info(`Connecting to ${deviceToConnect.name || "device"}...`);
+      console.log("Connecting to device:", deviceToConnect);
+      
+      // Reset real data flag on new connection
+      setRealDataReceived(false);
       
       const server = await deviceToConnect.gatt?.connect();
       if (!server) {
         throw new Error("Failed to connect to GATT server");
+      }
+      
+      console.log("Connected to GATT server");
+      
+      // List available services for debugging
+      try {
+        const services = await server.getPrimaryServices();
+        console.log("Available services:", services.map(s => s.uuid));
+      } catch (e) {
+        console.log("Could not list all services:", e);
       }
       
       // When successfully connected
@@ -102,6 +138,7 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       
       // Trigger initial data sync
       setTimeout(() => {
+        syncTime();
         syncData();
       }, 1000);
       
@@ -119,7 +156,7 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } finally {
       setIsConnecting(false);
     }
-  }, []);
+  }, [syncData, syncTime]);
 
   // Disconnect from the current device
   const disconnectDevice = useCallback(async () => {
@@ -150,27 +187,33 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       const currentTime = new Date().toLocaleString();
       setLastSyncTime(currentTime);
       
-      // Sync time with the device
-      await measurement.syncTime();
+      console.log("Syncing data from device...");
       
       // Query battery level
       try {
+        console.log("Querying battery level...");
         const batteryService = await device.gatt.getPrimaryService('battery_service');
         const batteryCharacteristic = await batteryService.getCharacteristic('battery_level');
         const batteryValue = await batteryCharacteristic.readValue();
         const battery = batteryValue.getUint8(0);
         setBatteryLevel(battery);
+        console.log("Battery level:", battery);
       } catch (e) {
         console.log("Battery service not available, using simulated value");
         setBatteryLevel(Math.floor(Math.random() * 41) + 60); // Simulate 60-100%
       }
       
-      // Simulate data sync events for other metrics
-      simulateDataSync('heartRate');
-      simulateDataSync('hrv');
-      simulateDataSync('steps');
-      simulateDataSync('sleep');
-      simulateDataSync('stress');
+      // If we haven't received real data yet, simulate data for UI
+      if (!realDataReceived) {
+        console.log("No real data received yet, simulating data for UI");
+        simulateDataSync('heartRate');
+        simulateDataSync('hrv');
+        simulateDataSync('steps');
+        simulateDataSync('sleep');
+        simulateDataSync('stress');
+      } else {
+        console.log("Real data already received, not simulating");
+      }
       
       toast.success("Data sync complete");
     } catch (error) {
@@ -179,7 +222,7 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     } finally {
       setDataFetchStatus(prev => ({ ...prev, syncing: false }));
     }
-  }, [device, measurement]);
+  }, [device, realDataReceived]);
   
   // Sync time with the device - this uses our measurement hook
   const syncTime = useCallback(async () => {
@@ -308,6 +351,7 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     }
     
     try {
+      console.log(`Starting ${type} measurement...`);
       let success = false;
       
       // Call the appropriate measurement function
@@ -316,6 +360,7 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           success = await measurement.startHeartRateMeasurement();
           break;
         case "hrv":
+          console.log("Initiating HRV measurement");
           success = await measurement.startHrvMeasurement();
           break;
         case "stress":
@@ -326,10 +371,12 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           break;
       }
       
+      console.log(`${type} measurement success:`, success);
+      
       // If we couldn't start the real measurement, simulate it
       if (!success) {
-        // In a real app, we'd handle this differently
-        // For now, let's simulate data for demo purposes
+        console.log(`Could not start real ${type} measurement, simulating data...`);
+        // Use a different interval for each measurement type
         const interval = setInterval(() => {
           simulateDataSync(type);
         }, 3000);
