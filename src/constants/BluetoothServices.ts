@@ -82,6 +82,12 @@ export const SCAN_SERVICE_UUIDS = [
   'battery_service',
   'device_information',
   '6e400001-b5a3-f393-e0a9-e50e24dcca9e', // HRV Service
-  '6e400008-b5a3-f393-e0a9-e50e24dcca9e'  // Control Service
+  '6e400008-b5a3-f393-e0a9-e50e24dcca9e',  // Control Service
+  // Add all other possible ring services to increase detection chances
+  '6e400002-b5a3-f393-e0a9-e50e24dcca9e',
+  '6e400003-b5a3-f393-e0a9-e50e24dcca9e',
+  '6e400004-b5a3-f393-e0a9-e50e24dcca9e',
+  '6e400005-b5a3-f393-e0a9-e50e24dcca9e',
+  '6e400006-b5a3-f393-e0a9-e50e24dcca9e',
+  '6e400007-b5a3-f393-e0a9-e50e24dcca9e'
 ];
-

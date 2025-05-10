@@ -54,14 +54,9 @@ export const BluetoothProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       toast.info("Scanning for devices...");
       
       // Request nearby Bluetooth devices with specific services
+      // Use acceptAllDevices to see all available devices including the ring
       const devices = await navigator.bluetooth.requestDevice({
-        // Let user pick from compatible devices
-        filters: [
-          { services: [SCAN_SERVICE_UUIDS[0]] },
-          { services: [SCAN_SERVICE_UUIDS[1]] },
-          { services: [SCAN_SERVICE_UUIDS[2]] }
-        ],
-        // Request specific services the device must have
+        acceptAllDevices: true,
         optionalServices: SCAN_SERVICE_UUIDS
       });
       
