@@ -1,3 +1,4 @@
+
 /**
  * Data parsing utilities for smart ring data
  */
@@ -58,62 +59,25 @@ export const parseHrvData = (dataView: DataView): {
   value: number;
   status: 'completed' | 'measuring' | 'error';
 } => {
-  console.log("Parsing HRV data:", Array.from(new Uint8Array(dataView.buffer)));
+  // First byte contains status
+  const statusByte = dataView.getUint8(0);
   
-  try {
-    // Try to detect the data format based on the content
-    if (dataView.byteLength === 1) {
-      // Some devices only send a status value
-      const statusByte = dataView.getUint8(0);
-      console.log("Single byte HRV data, status byte:", statusByte);
-      return { 
-        value: 0, 
-        status: statusByte === 1 ? 'completed' : 'measuring' 
-      };
-    }
-    
-    // Standard format: first byte is status, next two are HRV value
-    if (dataView.byteLength >= 3) {
-      const statusByte = dataView.getUint8(0);
-      
-      let status: 'completed' | 'measuring' | 'error';
-      switch (statusByte) {
-        case 0x00:
-          status = 'measuring';
-          break;
-        case 0x01:
-          status = 'completed';
-          break;
-        default:
-          status = 'error';
-      }
-      
-      // Second and third bytes contain HRV value in ms
-      const value = dataView.getUint16(1, true);
-      console.log("Standard format HRV data:", { status, value });
-      
-      return { value, status };
-    }
-    
-    // Alternative format: all bytes are the actual HRV value
-    // Try to extract a meaningful value
-    if (dataView.byteLength >= 2) {
-      const value = dataView.getUint16(0, true);
-      console.log("Alternative format HRV data, value:", value);
-      return { 
-        value, 
-        status: 'completed' 
-      };
-    }
-    
-    // Fall back to measuring status with zero value if data format is unrecognized
-    console.log("Unknown HRV data format");
-    return { value: 0, status: 'measuring' };
-    
-  } catch (error) {
-    console.error("Error parsing HRV data:", error);
-    return { value: 0, status: 'error' };
+  let status: 'completed' | 'measuring' | 'error';
+  switch (statusByte) {
+    case 0x00:
+      status = 'measuring';
+      break;
+    case 0x01:
+      status = 'completed';
+      break;
+    default:
+      status = 'error';
   }
+  
+  // Second and third bytes contain HRV value in ms
+  const value = dataView.getUint16(1, true);
+  
+  return { value, status };
 };
 
 /**
@@ -274,3 +238,4 @@ export const parseBloodOxygenData = (dataView: DataView): {
   
   return { percentage, status };
 };
+

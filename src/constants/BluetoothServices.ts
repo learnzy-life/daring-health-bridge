@@ -16,10 +16,7 @@ export const BLUETOOTH_SERVICES = {
   TEMPERATURE_SERVICE: '6e400005-b5a3-f393-e0a9-e50e24dcca9e',
   BLOOD_OXYGEN_SERVICE: '6e400006-b5a3-f393-e0a9-e50e24dcca9e',
   ACTIVITY_SERVICE: '6e400007-b5a3-f393-e0a9-e50e24dcca9e',
-  CONTROL_SERVICE: '6e400008-b5a3-f393-e0a9-e50e24dcca9e',
-  
-  // Alternative HRV service UUID - some rings use this format
-  ALT_HRV_SERVICE: '0000180d-b5a3-f393-e0a9-e50e24dcca9e'
+  CONTROL_SERVICE: '6e400008-b5a3-f393-e0a9-e50e24dcca9e'
 };
 
 export const BLUETOOTH_CHARACTERISTICS = {
@@ -44,10 +41,7 @@ export const BLUETOOTH_CHARACTERISTICS = {
   MEASUREMENT_CONTROL: '6e400801-b5a3-f393-e0a9-e50e24dcca9e',
   SYNC_TIME: '6e400802-b5a3-f393-e0a9-e50e24dcca9e',
   USER_INFO: '6e400803-b5a3-f393-e0a9-e50e24dcca9e',
-  DEVICE_SETTINGS: '6e400804-b5a3-f393-e0a9-e50e24dcca9e',
-  
-  // Alternative HRV characteristic - some rings use this
-  ALT_HRV_MEASUREMENT: '00002a38-0000-1000-8000-00805f9b34fb'
+  DEVICE_SETTINGS: '6e400804-b5a3-f393-e0a9-e50e24dcca9e'
 };
 
 // Command codes for controlling the ring functions
@@ -63,10 +57,6 @@ export const COMMAND_CODES = {
   STOP_HRV: [0x02, 0x00],
   ENABLE_TIMING_HRV: [0x02, 0x02],
   DISABLE_TIMING_HRV: [0x02, 0x03],
-  
-  // Alternative HRV commands - some rings need these specific commands
-  ALT_START_HRV: [0x10, 0x01],
-  ALT_STOP_HRV: [0x10, 0x00],
   
   // Stress
   START_STRESS: [0x03, 0x01],
@@ -92,13 +82,12 @@ export const SCAN_SERVICE_UUIDS = [
   'battery_service',
   'device_information',
   '6e400001-b5a3-f393-e0a9-e50e24dcca9e', // HRV Service
-  '6e400008-b5a3-f393-e0a9-e50e24dcca9e', // Control Service
+  '6e400008-b5a3-f393-e0a9-e50e24dcca9e',  // Control Service
   // Add all other possible ring services to increase detection chances
   '6e400002-b5a3-f393-e0a9-e50e24dcca9e',
   '6e400003-b5a3-f393-e0a9-e50e24dcca9e',
   '6e400004-b5a3-f393-e0a9-e50e24dcca9e',
   '6e400005-b5a3-f393-e0a9-e50e24dcca9e',
   '6e400006-b5a3-f393-e0a9-e50e24dcca9e',
-  '6e400007-b5a3-f393-e0a9-e50e24dcca9e',
-  '0000180d-b5a3-f393-e0a9-e50e24dcca9e' // Alternative HRV Service
+  '6e400007-b5a3-f393-e0a9-e50e24dcca9e'
 ];
